@@ -735,7 +735,7 @@ function dragMove(e){
   d.ghost.style.left=(pt.x-d.size/2)+"px";d.ghost.style.top=(pt.y-d.size/2)+"px";
   var prev=document.querySelector(".c.drop");if(prev)prev.classList.remove("drop");
   var el=document.elementFromPoint(pt.x,pt.y),c=el&&el.closest?el.closest(".c"):null;
-  if(c&&cellFree(+c.dataset.i))c.classList.add("drop");
+  if(c&&isMyTurn()&&cellFree(+c.dataset.i))c.classList.add("drop");
 }
 function dragEnd(e,cancelled){
   var d=drag;drag=null;
@@ -748,7 +748,7 @@ function dragEnd(e,cancelled){
     if(!cancelled&&game){
       var pt=dragPoint(e),el=document.elementFromPoint(pt.x,pt.y);
       var c=el&&el.closest?el.closest(".c"):null, inRack=el&&el.closest?el.closest("#rack"):null;
-      if(c&&cellFree(+c.dataset.i)){
+      if(c&&isMyTurn()&&cellFree(+c.dataset.i)){
         var i=+c.dataset.i;
         if(d.src.kind==="rack")placeAt(i,d.src.ri);
         else{var p=pend.filter(function(x){return x.i===d.src.i;})[0];if(p)p.i=i;}
@@ -766,7 +766,7 @@ function dragEnd(e,cancelled){
   }else if(deferred){deferred=false;render();}
 }
 document.addEventListener("pointerdown",function(e){
-  if(e.button>0||!game||game.status!=="playing"||exMode||!isMyTurn())return;
+  if(e.button>0||!game||exMode||myIdx()<0||game.status==="lobby"||game.status==="none")return;
   var t=e.target.closest?e.target.closest("#rack .t, #board .c.pend"):null;
   if(!t||t.classList.contains("gone"))return;
   var src=t.classList.contains("pend")?{kind:"board",i:+t.dataset.i}:{kind:"rack",ri:+t.dataset.r};
