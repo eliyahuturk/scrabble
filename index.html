@@ -154,6 +154,35 @@ function toast(msg){var t=$("#toast");t.textContent=msg;t.hidden=false;clearTime
 function closeModal(){$("#modalHost").innerHTML="";}
 function openModal(html){$("#modalHost").innerHTML='<div class="modal" id="modalBg"><div class="card" role="dialog">'+html+'</div></div>';}
 
+/* ---------- dictionary (words.txt sits next to this page; the game still works without it) ---------- */
+var WORDS=null;
+fetch("words.txt").then(function(r){if(!r.ok)throw new Error("no list");return r.text();}).then(function(t){
+  var s=new Set();
+  t.split(/\r?\n/).forEach(function(w){w=w.trim().toUpperCase();if(w)s.add(w);});
+  if(s.size>1000){WORDS=s;if(game&&game.status==="playing")render();}
+}).catch(function(){});
+function badWords(list){return WORDS?list.filter(function(w){return !WORDS.has(w);}):[];}
+
+/* ---------- alerts: tab title and buzz while the page is open; ntfy push for when it is closed ---------- */
+var baseTitle=document.title;
+function alertTurn(){
+  document.title="● Your turn - Scrabble";
+  try{if(navigator.vibrate)navigator.vibrate([120,60,120]);}catch(e){}
+}
+function clearAlert(){document.title=baseTitle;}
+window.addEventListener("focus",clearAlert);
+document.addEventListener("visibilitychange",function(){if(!document.hidden)clearAlert();});
+function notifyOther(g){
+  try{
+    var me=g.players.findIndex(function(p){return p.id===myId;});
+    if(me<0||g.players.length<2)return;
+    if(g.status!=="playing"&&g.status!=="over")return;
+    var seat=1-me,msg=(g.log&&g.log.length)?g.log[g.log.length-1]:"Your move.";
+    var title=g.status==="over"?"Scrabble: game over":(g.turn===seat?"Scrabble: your turn":"Scrabble");
+    fetch(RELAY+"kts-n-"+room+"-"+seat+"/publish?title="+encodeURIComponent(title)+"&message="+encodeURIComponent(msg)+"&click="+encodeURIComponent(shareLink())).catch(function(){});
+  }catch(e){}
+}
+
 /* ---------- sync: a free public relay (ntfy.sh) carries each new game state ---------- */
 var es=null, lastId=null, remoteVer=0, retryT=null, pubT=null;
 function topic(){return "kts-"+room;}
@@ -186,7 +215,10 @@ function receive(s){
   remoteVer=Math.max(remoteVer,s.ver);
   var cur=game?(game.ver||0):0;
   if(s.ver>cur||(game&&s.ver===cur&&String(s.w)>String(game.w))){
-    game=s;persist();maybeAutoJoin();render();
+    var wasMine=isMyTurn();
+    game=s;persist();maybeAutoJoin();
+    if(!wasMine&&isMyTurn()&&s.w!==myId)alertTurn();
+    render();
   }
 }
 function encodeState(g){
@@ -208,7 +240,7 @@ function publish(g){
 }
 function save(g){
   g.ver=(game?(game.ver||0):0)+1;g.w=myId;
-  game=g;persist();render();publish(g);
+  game=g;persist();render();publish(g);notifyOther(g);
   return true;
 }
 document.addEventListener("visibilitychange",function(){
@@ -431,7 +463,8 @@ function renderPreview(){
   if(!pend.length||exMode){el.innerHTML="";return;}
   var r=computeMove(game.board,pend);
   if(!r.ok){el.textContent=r.msg;return;}
-  el.innerHTML=r.words.map(function(w){return esc(w.text)+" "+w.score;}).join(" · ")+(r.bingo?" · 50 bonus":"")+" — <b>"+r.total+" points</b>";
+  var bad=badWords(r.words.map(function(w){return w.text;}));
+  el.innerHTML=r.words.map(function(w){return (bad.indexOf(w.text)>=0?'<span style="color:var(--warn)">✗ ':'<span>')+esc(w.text)+" "+w.score+'</span>';}).join(" · ")+(r.bingo?" · 50 bonus":"")+" — <b>"+r.total+" points</b>"+(bad.length?'<br><span style="color:var(--warn)">Not in the dictionary: '+esc(bad.join(", "))+'</span>':"");
 }
 function refreshPlay(){renderBoard();renderRack();renderPreview();renderActions();}
 function renderActions(){
@@ -460,7 +493,7 @@ function renderActions(){
   }
   el.innerHTML=h;
   var g=function(id){return document.getElementById(id);};
-  if(g("aPlay"))g("aPlay").onclick=doPlay;
+  if(g("aPlay"))g("aPlay").onclick=function(){doPlay(false);};
   if(g("aRecall"))g("aRecall").onclick=function(){pend=[];sel=null;refreshPlay();};
   if(g("aShuffle"))g("aShuffle").onclick=function(){
     if(pend.length){toast("Recall your tiles before shuffling.");return;}
@@ -492,7 +525,7 @@ function renderChallengeBar(){
 }
 function openChallenge(){
   var lm=game.lastMove;
-  openModal('<h2>Challenge</h2><p>Check each word in an official Scrabble dictionary, then tell the game what you found.</p><div class="words">'+lm.words.map(function(w){return '<div>'+esc(w)+'</div>';}).join("")+'</div><a href="https://scrabble.merriam.com/" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">Open the Scrabble word checker</a><button class="btn danger" id="chUp">Not a word: take the play back</button><button class="btn" id="chDown">It is a word: I lose my turn</button><button class="btn" id="chX">Never mind</button>');
+  openModal('<h2>Challenge</h2>'+(WORDS?'<p>The built-in dictionary says:</p>':'<p>Check each word in an official Scrabble dictionary, then tell the game what you found.</p>')+'<div class="words">'+lm.words.map(function(w){return '<div>'+esc(w)+(WORDS?(WORDS.has(w)?' <span style="color:var(--accent)">✓ valid</span>':' <span style="color:var(--warn)">✗ not found</span>'):'')+'</div>';}).join("")+'</div><a href="https://scrabble.merriam.com/" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">Open the Scrabble word checker</a><button class="btn danger" id="chUp">Not a word: take the play back</button><button class="btn" id="chDown">It is a word: I lose my turn</button><button class="btn" id="chX">Never mind</button>');
   $("#chX").onclick=closeModal;
   $("#chUp").onclick=function(){closeModal();resolveChallenge(true);};
   $("#chDown").onclick=function(){closeModal();resolveChallenge(false);};
@@ -563,10 +596,17 @@ function finishGame(g,byOut){
   g.status="over";
   return adj;
 }
-function doPlay(){
+function doPlay(force){
   if(!isMyTurn())return;
   var r=computeMove(game.board,pend);
   if(!r.ok){toast(r.msg);return;}
+  var bad=force?[]:badWords(r.words.map(function(w){return w.text;}));
+  if(bad.length){
+    openModal('<h2>Not in the dictionary</h2><div class="words">'+bad.map(function(w){return '<div>'+esc(w)+'</div>';}).join("")+'</div><p>Your partner can challenge this word and win. The list can miss a few real words, so you can still play it.</p><button class="btn" id="pgo">Go back</button><button class="btn danger" id="pany">Play anyway</button>');
+    $("#pgo").onclick=closeModal;
+    $("#pany").onclick=function(){closeModal();doPlay(true);};
+    return;
+  }
   var g=clone(game),me=myIdx(),p=g.players[me];
   var b=g.board.split(""),used={},tiles="";
   pend.forEach(function(x){b[x.i]=x.ch;used[x.ri]=1;tiles+=localRack[x.ri];});
@@ -744,6 +784,16 @@ document.addEventListener("pointermove",function(e){
 document.addEventListener("pointerup",function(e){if(drag&&e.pointerId===drag.id)dragEnd(e,false);});
 document.addEventListener("pointercancel",function(e){if(drag&&e.pointerId===drag.id)dragEnd(e,true);});
 
+function openAlerts(){
+  var tp="kts-n-"+room+"-"+myIdx();
+  openModal('<h2>Phone alerts</h2><p>Get a notification when your partner plays, even with this page closed. Do this once on your own phone.</p>'+
+    '<ol style="margin:0;padding-left:20px;color:var(--muted);display:flex;flex-direction:column;gap:6px"><li>Install the free <b>ntfy</b> app from the App Store or Google Play.</li><li>Open it, tap <b>+</b>, and type this topic name:</li></ol>'+
+    '<input type="text" id="tpIn" readonly value="'+esc(tp)+'"><button class="btn" id="tpCopy">Copy topic name</button>'+
+    '<p>Leave the server as ntfy.sh and tap Subscribe. This topic is only for you, so your partner uses a different one from their own Menu.</p><button class="btn" id="tpX">Close</button>');
+  $("#tpX").onclick=closeModal;
+  $("#tpCopy").onclick=function(){var i=$("#tpIn");(navigator.clipboard?navigator.clipboard.writeText(i.value):Promise.reject()).then(function(){toast("Copied.");}).catch(function(){i.select();toast("Press and hold to copy.");});};
+}
+
 /* ---------- menu ---------- */
 $("#menuBtn").onclick=function(){
   if(!room)return;
@@ -751,12 +801,14 @@ $("#menuBtn").onclick=function(){
     (game&&game.status==="playing"&&myIdx()>=0?
       (canTakeBack()?'<button class="btn" id="mBack">Take back my last word</button>':'')+
       '<button class="btn" id="mTurn">Switch turn to '+esc(game.players[1-game.turn].name)+'</button>':'')+
+    (game&&myIdx()>=0&&(game.status==="playing"||game.status==="over")?'<button class="btn" id="mAlert">Phone alerts when it\'s your turn</button>':'')+
     '<button class="btn" id="mCopy">Copy invite link</button>'+
     '<button class="btn danger" id="mEnd">End this game for both players</button>'+
     '<button class="btn" id="mLeave">Leave on this phone only</button><button class="btn" id="mX">Close</button>');
   $("#mX").onclick=closeModal;
   if($("#mBack"))$("#mBack").onclick=function(){closeModal();takeBack();};
   if($("#mTurn"))$("#mTurn").onclick=function(){closeModal();switchTurn();};
+  if($("#mAlert"))$("#mAlert").onclick=openAlerts;
   $("#mCopy").onclick=function(){(navigator.clipboard?navigator.clipboard.writeText(shareLink()):Promise.reject()).then(function(){toast("Link copied.");}).catch(function(){toast(shareLink());});};
   $("#mEnd").onclick=function(){closeModal();pend=[];sel=null;localRack=[];save({status:"none",players:[],log:[]});};
   $("#mLeave").onclick=function(){closeModal();leaveRoom();};
