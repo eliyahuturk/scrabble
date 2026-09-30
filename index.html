@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f6b4f">
+<title>Kitchen Table Scrabble</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@500;700;800&family=Zilla+Slab:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one column, phone first. Scores on top, board, rack, actions, move log. */
+:root{
+  --bg:#e7ece6; --panel:#f6f8f4; --ink:#1f2a24; --muted:#5d6b62; --line:#c5d0c4;
+  --sq:#d3dfd0; --sq-line:#b9c8b6; --tile:#f2dfae; --tile-edge:#c4a25c; --tile-ink:#2a1f10;
+  --tw:#c4463a; --dw:#e6a49c; --tl:#2f6fa3; --dl:#9fc6de;
+  --accent:#1f6b4f; --accent-ink:#ffffff; --warn:#b3261e; --pend:#fff3c4; --last:#2f6fa3;
+  --f-ui:"Libre Franklin",system-ui,sans-serif; --f-disp:"Zilla Slab",Georgia,serif;
+  --cell:22px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111713; --panel:#1a231d; --ink:#e6ece7; --muted:#95a59a; --line:#2c3a31;
+  --sq:#22302a; --sq-line:#2e4037; --tile:#d9c48f; --tile-edge:#9c8447; --tile-ink:#1e160a;
+  --tw:#a83a30; --dw:#7d4a45; --tl:#295c86; --dl:#33566d;
+  --accent:#4fb08a; --accent-ink:#0b1a13; --warn:#ff8a80; --pend:#f0e0a0; --last:#6db3e8; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.4 var(--f-ui);padding-inline:16px;padding-block:calc(14px + env(safe-area-inset-top,0px)) calc(40px + env(safe-area-inset-bottom,0px));-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--last);outline-offset:2px}
+#app{max-width:560px;margin-inline:auto;display:flex;flex-direction:column;gap:12px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+h1{font:700 26px/1 var(--f-disp);margin:0;letter-spacing:.01em}
+.topr{display:flex;align-items:center;gap:8px}
+#sync{font-size:12px;font-weight:700;padding:3px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+#sync[data-s="ok"]{color:var(--accent);border-color:var(--accent)}
+#sync[data-s="offline"]{color:var(--warn);border-color:var(--warn)}
+.link{background:none;border:0;color:var(--muted);padding:8px 4px;text-decoration:underline;text-underline-offset:3px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.card h2{font:700 20px/1.2 var(--f-disp);margin:0}
+.card p{margin:0;color:var(--muted)}
+.card .sep{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
+.codebig{font:700 28px/1 var(--f-disp);letter-spacing:.2em}
+input[type=text]{font:inherit;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:11px 14px;font-weight:700;min-height:44px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.danger{color:var(--warn);border-color:var(--warn)}
+.btn[disabled]{opacity:.4;cursor:default}
+.scores{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pl{background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:8px 12px;min-width:0}
+.pl.turn{border-color:var(--accent)}
+.pl .n{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl .s{font:700 28px/1.1 var(--f-disp);font-variant-numeric:tabular-nums}
+.pl .m{font-size:12px;color:var(--muted)}
+.status{font-weight:700;min-height:1.4em}
+.bar{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.bar span{min-width:0;flex:1 1 180px}
+.wrap{overflow:auto;border-radius:8px;border:1px solid var(--sq-line);background:var(--sq-line);padding:3px;max-width:100%}
+.board{display:grid;grid-template-columns:repeat(15,var(--cell));gap:1px;width:max-content;margin-inline:auto}
+.c{width:var(--cell);height:var(--cell);background:var(--sq);border:0;padding:0;position:relative;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:calc(var(--cell)*.3);border-radius:2px}
+.c.TW{background:var(--tw)}.c.DW,.c.ST{background:var(--dw)}.c.TL{background:var(--tl)}.c.DL{background:var(--dl);color:var(--ink)}
+.c.DW,.c.ST{color:var(--ink)}
+.c.ST{font-size:calc(var(--cell)*.6)}
+.tile{background:var(--tile);color:var(--tile-ink);box-shadow:inset 0 0 0 1px var(--tile-edge),0 1px 0 var(--tile-edge);border-radius:3px;position:relative;display:flex;align-items:center;justify-content:center;font-weight:800;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.c.tile{font-size:calc(var(--cell)*.6)}
+.tile .v{position:absolute;right:8%;bottom:4%;font-size:.42em;font-weight:700;line-height:1}
+.tile.blank .l{opacity:.55}
+.c.pend{background:var(--pend);box-shadow:inset 0 0 0 2px var(--accent);touch-action:none}
+.c.last{box-shadow:inset 0 0 0 2px var(--last)}
+.c.drop{outline:3px solid var(--accent);outline-offset:-2px;z-index:1}
+.preview{min-height:1.4em;font-size:14px;color:var(--muted)}
+.preview b{color:var(--ink)}
+.rack{display:flex;gap:6px;justify-content:center;background:var(--sq-line);border-radius:10px;padding:8px;min-height:62px}
+.t{flex:1 1 0;max-width:54px;aspect-ratio:1;border:0;padding:0;font-size:26px;touch-action:none}
+.t.sel{transform:translateY(-6px);box-shadow:inset 0 0 0 3px var(--accent),0 4px 0 var(--tile-edge)}
+.t.ex{box-shadow:inset 0 0 0 3px var(--warn)}
+.t.gone{visibility:hidden}
+.t.lift,.c.lift{opacity:.3}
+.ghost{position:fixed;z-index:50;pointer-events:none;transform:scale(1.08);box-shadow:0 8px 18px rgba(0,0,0,.4),inset 0 0 0 1px var(--tile-edge);border-radius:5px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.actions .btn{flex:1 1 auto}
+.log{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.log div{padding-block:2px;border-bottom:1px solid var(--line)}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-weight:700;max-width:90vw;z-index:60}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;z-index:40}
+.modal .card{max-width:420px;width:100%;max-height:90%;overflow:auto}
+.letters{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.letters .t{max-width:none;font-size:20px}
+.words{display:flex;flex-direction:column;gap:2px;font:700 18px var(--f-disp)}
+details summary{cursor:pointer;color:var(--muted);padding-block:6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top"><h1>Kitchen Table Scrabble</h1><div class="topr"><span id="sync" data-s="wait" hidden>Connecting…</span><button class="link" id="menuBtn" hidden>Menu</button></div></div>
+  <section id="lobby" class="card" hidden></section>
+  <section id="game" hidden>
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div class="scores" id="scores"></div>
+      <div class="status" id="status" role="status"></div>
+      <div class="bar" id="challengeBar" hidden></div>
+      <div class="wrap" id="wrap"><div class="board" id="board"></div></div>
+      <div class="preview" id="preview"></div>
+      <div class="rack" id="rack"></div>
+      <div class="actions" id="actions"></div>
+      <details id="logBox"><summary>Move history</summary><div class="log" id="log"></div></details>
+    </div>
+  </section>
+</div>
+<div id="toast" hidden></div>
+<div id="modalHost"></div>
+
+<script>
+(function(){
+"use strict";
+var N=15, CENTER=112, RELAY="https://ntfy.sh/";
+var VAL={A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10};
+var DIST={A:9,B:2,C:2,D:4,E:12,F:2,G:3,H:2,I:9,J:1,K:1,L:4,M:2,N:6,O:8,P:2,Q:1,R:6,S:4,T:6,U:4,V:2,W:2,X:1,Y:2,Z:1,"?":2};
+var PREM=(function(){
+  var p=new Array(225).fill("");
+  function mark(t,list){list.forEach(function(rc){p[rc[0]*N+rc[1]]=t;});}
+  mark("TW",[[0,0],[0,7],[0,14],[7,0],[7,14],[14,0],[14,7],[14,14]]);
+  mark("DW",[[1,1],[2,2],[3,3],[4,4],[1,13],[2,12],[3,11],[4,10],[13,1],[12,2],[11,3],[10,4],[13,13],[12,12],[11,11],[10,10]]);
+  mark("TL",[[1,5],[1,9],[5,1],[5,5],[5,9],[5,13],[9,1],[9,5],[9,9],[9,13],[13,5],[13,9]]);
+  mark("DL",[[0,3],[0,11],[2,6],[2,8],[3,0],[3,7],[3,14],[6,2],[6,6],[6,8],[6,12],[7,3],[7,11],[8,2],[8,6],[8,8],[8,12],[11,0],[11,7],[11,14],[12,6],[12,8],[14,3],[14,11]]);
+  p[CENTER]="ST";
+  return p;
+})();
+
+function $(s){return document.querySelector(s);}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function tv(ch){return (ch==="?"||ch!==ch.toUpperCase())?0:VAL[ch];}
+function rackValue(r){var s=0;for(var i=0;i<r.length;i++)s+=tv(r[i]);return s;}
+function newBag(){var a=[];Object.keys(DIST).forEach(function(k){for(var i=0;i<DIST[k];i++)a.push(k);});return shuffle(a).join("");}
+function sorted(s){return s.split("").sort().join("");}
+
+/* ---------- local storage (every access guarded) ---------- */
+function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function lsSet(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+function lsDel(k){try{localStorage.removeItem(k);}catch(e){}}
+var myId=lsGet("kts_id");
+if(!myId){myId="p"+Math.random().toString(36).slice(2,10)+Date.now().toString(36);lsSet("kts_id",myId);}
+function savedName(){return lsGet("kts_name")||"";}
+
+/* ---------- state ---------- */
+var room=null, game=null, pendingJoin=null, prefillCode="";
+var localRack=[], pend=[], sel=null, exMode=false, exSel={}, zoom=false;
+
+function toast(msg){var t=$("#toast");t.textContent=msg;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(function(){t.hidden=true;},3200);}
+function closeModal(){$("#modalHost").innerHTML="";}
+function openModal(html){$("#modalHost").innerHTML='<div class="modal" id="modalBg"><div class="card" role="dialog">'+html+'</div></div>';}
+
+/* ---------- sync: a free public relay (ntfy.sh) carries each new game state ---------- */
+var es=null, lastId=null, remoteVer=0, retryT=null, pubT=null;
+function topic(){return "kts-"+room;}
+function setSync(s){var el=$("#sync");el.hidden=!room;el.dataset.s=s;el.textContent=s==="ok"?"Live":s==="wait"?"Connecting…":"Offline";}
+function persist(){if(room&&game)lsSet("kts_game_"+room,JSON.stringify(game));}
+function closeStream(){if(es){es.close();es=null;}clearTimeout(retryT);clearTimeout(pubT);}
+function openStream(){
+  closeStream();
+  if(!room){setSync("wait");return;}
+  setSync("wait");
+  try{
+    es=new EventSource(RELAY+topic()+"/sse?since="+(lastId||"all"));
+  }catch(e){setSync("offline");return;}
+  es.onopen=function(){
+    setSync("ok");
+    clearTimeout(pubT);
+    pubT=setTimeout(function(){if(game&&(game.ver||0)>remoteVer)publish(game);},2500);
+  };
+  es.onerror=function(){setSync("wait");};
+  es.onmessage=function(ev){
+    var j;try{j=JSON.parse(ev.data);}catch(e){return;}
+    if(!j||j.event!=="message")return;
+    lastId=j.id;
+    var s;try{s=JSON.parse(j.message);}catch(e){return;}
+    receive(s);
+  };
+}
+function receive(s){
+  if(!s||typeof s.ver!=="number"||!s.status)return;
+  remoteVer=Math.max(remoteVer,s.ver);
+  var cur=game?(game.ver||0):0;
+  if(s.ver>cur||(game&&s.ver===cur&&String(s.w)>String(game.w))){
+    game=s;persist();maybeAutoJoin();render();
+  }
+}
+function encodeState(g){
+  var c=clone(g),s=JSON.stringify(c);
+  while(s.length>3800&&c.log&&c.log.length>1){c.log.shift();s=JSON.stringify(c);}
+  return s;
+}
+function publish(g){
+  if(!room)return;
+  var ver=g.ver;
+  fetch(RELAY+topic(),{method:"POST",body:encodeState(g)}).then(function(r){
+    if(!r.ok)throw new Error("relay "+r.status);
+    remoteVer=Math.max(remoteVer,ver);setSync("ok");
+  }).catch(function(){
+    setSync("offline");
+    clearTimeout(retryT);
+    retryT=setTimeout(function(){if(game&&(game.ver||0)>remoteVer)publish(game);},4000);
+  });
+}
+function save(g){
+  g.ver=(game?(game.ver||0):0)+1;g.w=myId;
+  game=g;persist();render();publish(g);
+  return true;
+}
+document.addEventListener("visibilitychange",function(){
+  if(!document.hidden&&room&&(!es||es.readyState===2))openStream();
+});
+
+/* ---------- rooms ---------- */
+function genCode(){var a="abcdefghjkmnpqrstuvwxyz23456789",s="";for(var i=0;i<8;i++)s+=a[Math.floor(Math.random()*a.length)];return s;}
+function normCode(v){return String(v||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function enterRoom(code){
+  room=code;lsSet("kts_room",code);
+  lastId=null;remoteVer=0;
+  var raw=lsGet("kts_game_"+code);
+  try{game=raw?JSON.parse(raw):null;}catch(e){game=null;}
+  openStream();
+}
+function leaveRoom(){
+  closeStream();
+  if(room)lsDel("kts_game_"+room);
+  room=null;game=null;pendingJoin=null;pend=[];sel=null;localRack=[];exMode=false;exSel={};
+  lsDel("kts_room");
+  try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
+  setSync("wait");render();
+}
+function shareLink(){return location.href.split("#")[0]+"#"+room;}
+
+/* ---------- move logic ---------- */
+function wordAt(b,i,dir){
+  var step=dir==="H"?1:N, s=i;
+  for(;;){
+    if(dir==="H"){if(s%N===0)break;}else{if(s<N)break;}
+    var p=s-step; if(b[p]===".")break; s=p;
+  }
+  var cells=[], k=s;
+  for(;;){
+    cells.push(k);
+    if(dir==="H"){if(k%N===N-1)break;}else{if(k>=N*(N-1))break;}
+    var nx=k+step; if(b[nx]===".")break; k=nx;
+  }
+  return cells;
+}
+function scoreWord(cells,b,pset){
+  var sum=0,mult=1,txt="";
+  cells.forEach(function(k){
+    var ch=b[k],v=tv(ch);txt+=ch.toUpperCase();
+    if(pset[k]){var p=PREM[k];if(p==="DL")v*=2;else if(p==="TL")v*=3;else if(p==="DW"||p==="ST")mult*=2;else if(p==="TW")mult*=3;}
+    sum+=v;
+  });
+  return {text:txt,score:sum*mult};
+}
+function computeMove(boardStr,pd){
+  if(!pd.length)return {ok:false,msg:""};
+  var b=boardStr.split(""),pset={};
+  pd.forEach(function(p){b[p.i]=p.ch;pset[p.i]=true;});
+  var rows={},cols={};
+  pd.forEach(function(p){rows[Math.floor(p.i/N)]=1;cols[p.i%N]=1;});
+  var nr=Object.keys(rows).length,nc=Object.keys(cols).length;
+  if(nr>1&&nc>1)return {ok:false,msg:"Tiles must sit in one row or one column."};
+  var dir=nr===1?"H":"V", cd=dir==="H"?"V":"H";
+  var main=wordAt(b,pd[0].i,dir);
+  if(pd.length>1&&!pd.every(function(p){return main.indexOf(p.i)>=0;}))return {ok:false,msg:"Tiles must be in a connected line with no gaps."};
+  var words=[];
+  if(main.length>1)words.push(main);
+  pd.forEach(function(p){var w=wordAt(b,p.i,cd);if(w.length>1)words.push(w);});
+  var first=/^\.+$/.test(boardStr);
+  if(first){
+    if(!pset[CENTER])return {ok:false,msg:"The first word must cover the center star."};
+    if(pd.length<2)return {ok:false,msg:"The first word needs at least two letters."};
+  }else if(!words.some(function(w){return w.some(function(k){return !pset[k];});})){
+    return {ok:false,msg:words.length?"Your word must touch tiles already on the board.":"Make a word of two or more letters that touches the board."};
+  }
+  if(!words.length)return {ok:false,msg:"Make a word of two or more letters."};
+  var scored=words.map(function(w){return scoreWord(w,b,pset);});
+  var total=scored.reduce(function(a,w){return a+w.score;},0);
+  var bingo=pd.length===7; if(bingo)total+=50;
+  return {ok:true,words:scored,total:total,bingo:bingo};
+}
+
+/* ---------- rendering ---------- */
+function myIdx(){return game&&game.players?game.players.findIndex(function(p){return p.id===myId;}):-1;}
+function isMyTurn(){return game&&game.status==="playing"&&myIdx()>=0&&game.turn===myIdx();}
+function tileHtml(ch){
+  var blank=ch!==ch.toUpperCase();
+  return '<span class="l">'+esc(ch.toUpperCase())+'</span>'+(blank?'':'<span class="v">'+VAL[ch]+'</span>');
+}
+function rackTileHtml(ch){return ch==="?"?'<span class="l">&nbsp;</span>':tileHtml(ch);}
+
+function fitBoard(){
+  var w=$("#wrap").clientWidth-8;
+  var cell=zoom?40:Math.max(18,Math.floor((w-14)/15));
+  document.documentElement.style.setProperty("--cell",cell+"px");
+}
+
+var drag=null, swallow=false, deferred=false;
+function render(){
+  if(drag&&drag.active){deferred=true;return;}
+  var lobby=$("#lobby"),gm=$("#game"),menu=$("#menuBtn");
+  menu.hidden=!room;
+  $("#sync").hidden=!room;
+  if(!room){gm.hidden=true;renderLanding();return;}
+  if(!game){gm.hidden=true;lobby.hidden=false;
+    lobby.innerHTML='<h2>Looking for the game…</h2><p>Code <b>'+esc(room.toUpperCase())+'</b>. If this stays here, check the code with your partner and your connection.</p><button class="btn" id="leaveBtn">Use a different code</button>';
+    $("#leaveBtn").onclick=leaveRoom;return;}
+  if(game.status==="none"){gm.hidden=true;renderStart();return;}
+  if(game.status==="lobby"){gm.hidden=true;renderLobby();return;}
+  lobby.hidden=true;gm.hidden=false;
+  renderGame();
+}
+
+function nameField(){return '<input type="text" id="nameIn" maxlength="16" placeholder="Your name" autocomplete="given-name" value="'+esc(savedName())+'">';}
+function readName(){var v=($("#nameIn").value||"").trim().slice(0,16);if(!v){toast("Enter your name first.");return null;}lsSet("kts_name",v);return v;}
+
+function renderLanding(){
+  var lobby=$("#lobby");lobby.hidden=false;
+  lobby.innerHTML='<h2>Play Scrabble</h2><p>Standard rules: 15×15 board, 100 tiles, 7-tile racks, 50-point bonus for using all seven. No ads, no accounts.</p>'+nameField()+
+    '<button class="btn primary" id="startBtn">Start a new game</button><hr class="sep"><p>Got an invite? Open the link you were sent, or type the game code.</p>'+
+    '<input type="text" id="codeIn" maxlength="12" placeholder="Game code" autocapitalize="characters" autocomplete="off" value="'+esc(prefillCode.toUpperCase())+'"><button class="btn" id="joinCodeBtn">Join with code</button>';
+  $("#startBtn").onclick=function(){var n=readName();if(!n)return;startNew(n);};
+  $("#joinCodeBtn").onclick=function(){
+    var n=readName();if(!n)return;
+    var c=normCode($("#codeIn").value);
+    if(c.length<6){toast("Enter the game code from your invite.");return;}
+    pendingJoin=n;enterRoom(c);render();
+  };
+}
+function startNew(name){
+  enterRoom(genCode());
+  save({status:"lobby",players:[{id:myId,name:name,score:0,rack:""}],log:[]});
+}
+function renderStart(){
+  var lobby=$("#lobby");lobby.hidden=false;
+  lobby.innerHTML='<h2>Start a new game</h2><p>Game code <b>'+esc(room.toUpperCase())+'</b>. Starting here puts you in a waiting room until your partner joins.</p>'+nameField()+'<button class="btn primary" id="startBtn">Start game</button>';
+  $("#startBtn").onclick=function(){var n=readName();if(!n)return;
+    save({status:"lobby",players:[{id:myId,name:n,score:0,rack:""}],log:[]});};
+}
+function renderLobby(){
+  var lobby=$("#lobby");lobby.hidden=false;
+  var host=game.players[0];
+  if(host.id===myId){
+    lobby.innerHTML='<h2>Waiting for your opponent</h2><p>Send them this link. It takes them straight to the game.</p>'+
+      '<input type="text" id="linkIn" readonly value="'+esc(shareLink())+'"><div class="actions"><button class="btn primary" id="copyBtn">Copy link</button>'+(navigator.share?'<button class="btn" id="shareBtn">Share…</button>':'')+'</div>'+
+      '<p>Or give them the code <span class="codebig">'+esc(room.toUpperCase())+'</span></p><button class="btn" id="cancelBtn">Cancel</button>';
+    $("#copyBtn").onclick=function(){
+      var inp=$("#linkIn");
+      (navigator.clipboard?navigator.clipboard.writeText(inp.value):Promise.reject()).then(function(){toast("Link copied.");}).catch(function(){inp.select();toast("Press and hold to copy the link.");});
+    };
+    if($("#shareBtn"))$("#shareBtn").onclick=function(){navigator.share({title:"Scrabble",text:"Join my Scrabble game",url:shareLink()}).catch(function(){});};
+    $("#cancelBtn").onclick=leaveRoom;
+  }else{
+    lobby.innerHTML='<h2>'+esc(host.name)+' is waiting for you</h2>'+nameField()+'<button class="btn primary" id="joinBtn">Join game</button>';
+    $("#joinBtn").onclick=function(){var n=readName();if(!n)return;join(n);};
+  }
+}
+function maybeAutoJoin(){
+  if(!pendingJoin||!game)return;
+  if(game.status==="lobby"&&game.players.length===1&&game.players[0].id!==myId){var n=pendingJoin;pendingJoin=null;join(n);}
+  else if(game.status==="playing"||game.status==="over"){pendingJoin=null;}
+}
+function dealGame(g){
+  var bag=newBag().split("");
+  g.players.forEach(function(p){p.score=0;p.rack=bag.splice(0,7).join("");});
+  g.bag=bag.join("");g.board=new Array(226).join(".");
+  g.turn=Math.floor(Math.random()*2);g.status="playing";g.scoreless=0;g.lastMove=null;
+  g.log=["Game on. "+g.players[g.turn].name+" goes first."];
+  return g;
+}
+function join(name){
+  var g=clone(game);
+  g.players.push({id:myId,name:name,score:0,rack:""});
+  save(dealGame(g));
+}
+
+function renderGame(){
+  var me=myIdx(),myTurn=isMyTurn();
+  fitBoard();
+  $("#scores").innerHTML=game.players.map(function(p,i){
+    var you=i===me;
+    return '<div class="pl'+(game.status==="playing"&&game.turn===i?' turn':'')+'"><div class="n">'+esc(p.name)+(you?' (you)':'')+'</div><div class="s">'+p.score+'</div><div class="m">'+p.rack.length+' tiles</div></div>';
+  }).join("");
+  var st="";
+  if(game.status==="over"){
+    var a=game.players[0],b=game.players[1];
+    st=a.score===b.score?"Game over. It's a tie at "+a.score+".":"Game over. "+(a.score>b.score?a.name:b.name)+" wins "+Math.max(a.score,b.score)+" to "+Math.min(a.score,b.score)+".";
+  }else if(me<0){st="Watching. It is "+game.players[game.turn].name+"'s turn.";}
+  else if(myTurn){st=exMode?"Choose tiles to swap.":"Your turn.";}
+  else st="Waiting for "+game.players[game.turn].name+"…";
+  st+=' <span style="font-weight:500;color:var(--muted)">· '+game.bag.length+' in bag</span>';
+  $("#status").innerHTML=st;
+  renderChallengeBar();
+  if(me>=0){
+    var gr=game.players[me].rack;
+    if(sorted(gr)!==sorted(localRack.join(""))){localRack=gr.split("");pend=[];sel=null;exMode=false;exSel={};}
+    if(!myTurn&&pend.length){pend=[];sel=null;}
+  }else{localRack=[];pend=[];}
+  renderBoard();renderRack();renderPreview();renderActions();renderLog();
+}
+
+function renderBoard(){
+  var pm={};pend.forEach(function(p){pm[p.i]=p;});
+  var last={};if(game.lastMove&&game.lastMove.cells)game.lastMove.cells.forEach(function(i){last[i]=1;});
+  var h="";
+  for(var i=0;i<225;i++){
+    var ch=game.board[i],p=pm[i],cls="c",inner="";
+    if(p){cls+=" tile pend"+(p.ch!==p.ch.toUpperCase()?" blank":"");inner=tileHtml(p.ch);}
+    else if(ch!=="."){cls+=" tile"+(ch!==ch.toUpperCase()?" blank":"")+(last[i]?" last":"");inner=tileHtml(ch);}
+    else{var pr=PREM[i];if(pr){cls+=" "+pr;inner=pr==="ST"?"★":pr;}}
+    h+='<button class="'+cls+'" data-i="'+i+'" aria-label="row '+(Math.floor(i/N)+1)+' column '+(i%N+1)+'">'+inner+'</button>';
+  }
+  $("#board").innerHTML=h;
+}
+function renderRack(){
+  var used={};pend.forEach(function(p){used[p.ri]=1;});
+  $("#rack").innerHTML=localRack.length?localRack.map(function(ch,ri){
+    var c="t tile";if(used[ri])c+=" gone";if(sel===ri)c+=" sel";if(exMode&&exSel[ri])c+=" ex";
+    return '<button class="'+c+'" data-r="'+ri+'">'+rackTileHtml(ch)+'</button>';
+  }).join(""):'<span style="color:var(--muted);padding:10px">'+(myIdx()<0?"You are watching this game.":"No tiles")+'</span>';
+}
+function renderPreview(){
+  var el=$("#preview");
+  if(!pend.length||exMode){el.innerHTML="";return;}
+  var r=computeMove(game.board,pend);
+  if(!r.ok){el.textContent=r.msg;return;}
+  el.innerHTML=r.words.map(function(w){return esc(w.text)+" "+w.score;}).join(" · ")+(r.bingo?" · 50 bonus":"")+" — <b>"+r.total+" points</b>";
+}
+function refreshPlay(){renderBoard();renderRack();renderPreview();renderActions();}
+function renderActions(){
+  var el=$("#actions"),me=myIdx();
+  if(game.status==="over"){
+    el.innerHTML=(me>=0?'<button class="btn primary" id="aNew">Play again</button>':'')+'<button class="btn" id="aZoom">'+(zoom?"Fit board":"Zoom board")+'</button>';
+    if($("#aNew"))$("#aNew").onclick=function(){var g=clone(game);g.players.forEach(function(p){p.score=0;});save(dealGame(g));};
+    $("#aZoom").onclick=toggleZoom;return;
+  }
+  if(me<0){
+    el.innerHTML=game.players.map(function(p,i){return '<button class="btn" data-seat="'+i+'">I am '+esc(p.name)+'</button>';}).join("")+'<button class="btn" id="aZoom">'+(zoom?"Fit board":"Zoom board")+'</button>';
+    $("#aZoom").onclick=toggleZoom;return;
+  }
+  var t=isMyTurn(),h="";
+  if(exMode){
+    var n=Object.keys(exSel).length;
+    h='<button class="btn primary" id="aDoSwap"'+(n?"":" disabled")+'>Swap '+n+' tile'+(n===1?"":"s")+'</button><button class="btn" id="aCancelSwap">Cancel</button>';
+  }else{
+    var r=computeMove(game.board,pend);
+    h='<button class="btn primary" id="aPlay"'+(t&&r.ok?"":" disabled")+'>Play'+(r.ok?" "+r.total:"")+'</button>'+
+      '<button class="btn" id="aRecall"'+(pend.length?"":" disabled")+'>Recall</button>'+
+      '<button class="btn" id="aShuffle">Shuffle</button>'+
+      '<button class="btn" id="aSwap"'+(t&&game.bag.length>=7?"":" disabled")+'>Swap</button>'+
+      '<button class="btn" id="aPass"'+(t?"":" disabled")+'>Pass</button>'+
+      '<button class="btn" id="aZoom">'+(zoom?"Fit":"Zoom")+'</button>';
+  }
+  el.innerHTML=h;
+  var g=function(id){return document.getElementById(id);};
+  if(g("aPlay"))g("aPlay").onclick=doPlay;
+  if(g("aRecall"))g("aRecall").onclick=function(){pend=[];sel=null;refreshPlay();};
+  if(g("aShuffle"))g("aShuffle").onclick=function(){
+    if(pend.length){toast("Recall your tiles before shuffling.");return;}
+    shuffle(localRack);sel=null;renderRack();};
+  if(g("aSwap"))g("aSwap").onclick=function(){pend=[];sel=null;exMode=true;exSel={};renderGame();};
+  if(g("aPass"))g("aPass").onclick=confirmPass;
+  if(g("aZoom"))g("aZoom").onclick=toggleZoom;
+  if(g("aDoSwap"))g("aDoSwap").onclick=doSwap;
+  if(g("aCancelSwap"))g("aCancelSwap").onclick=function(){exMode=false;exSel={};renderGame();};
+}
+function toggleZoom(){zoom=!zoom;fitBoard();renderActions();}
+function renderLog(){
+  $("#log").innerHTML=(game.log||[]).slice().reverse().map(function(l){return '<div>'+esc(l)+'</div>';}).join("");
+}
+
+/* ---------- challenge ---------- */
+function canChallenge(){
+  var lm=game.lastMove,me=myIdx();
+  if(!lm||lm.type!=="play"||!lm.canChallenge||me<0||lm.by===me)return false;
+  return (game.status==="playing"&&game.turn===me)||game.status==="over";
+}
+function renderChallengeBar(){
+  var el=$("#challengeBar");
+  if(!canChallenge()){el.hidden=true;return;}
+  var lm=game.lastMove;
+  el.hidden=false;
+  el.innerHTML='<span>'+esc(game.players[lm.by].name)+' played <b>'+esc(lm.words.join(", "))+'</b> for '+lm.score+'. Think a word is fake?</span><button class="btn danger" id="chBtn">Challenge</button>';
+  $("#chBtn").onclick=openChallenge;
+}
+function openChallenge(){
+  var lm=game.lastMove;
+  openModal('<h2>Challenge</h2><p>Check each word in an official Scrabble dictionary, then tell the game what you found.</p><div class="words">'+lm.words.map(function(w){return '<div>'+esc(w)+'</div>';}).join("")+'</div><a href="https://scrabble.merriam.com/" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">Open the Scrabble word checker</a><button class="btn danger" id="chUp">Not a word: take the play back</button><button class="btn" id="chDown">It is a word: I lose my turn</button><button class="btn" id="chX">Never mind</button>');
+  $("#chX").onclick=closeModal;
+  $("#chUp").onclick=function(){closeModal();resolveChallenge(true);};
+  $("#chDown").onclick=function(){closeModal();resolveChallenge(false);};
+}
+function resolveChallenge(upheld){
+  var g=clone(game),lm=g.lastMove,me=myIdx(),m=lm.by;
+  var mover=g.players[m],chal=g.players[me];
+  g.log=g.log||[];
+  if(upheld){
+    lm.cells.forEach(function(i){g.board=g.board.substring(0,i)+"."+g.board.substring(i+1);});
+    mover.score-=lm.score;
+    if(lm.adj){g.players.forEach(function(p,i){p.score-=(lm.adj[i]||0);});}
+    var rack=mover.rack.split("");
+    lm.drawn.split("").forEach(function(ch){var k=rack.indexOf(ch);if(k>=0)rack.splice(k,1);});
+    mover.rack=rack.join("")+lm.tiles;
+    g.bag=shuffle((g.bag+lm.drawn).split("")).join("");
+    g.status="playing";g.turn=me;
+    pushLog(g,chal.name+" challenged and won. "+mover.name+" takes back "+lm.words.join(", ")+".");
+    g.lastMove={type:"challenge",by:me,canChallenge:false};
+  }else{
+    pushLog(g,chal.name+" challenged and lost. "+mover.name+" plays again.");
+    if(g.status==="playing")g.turn=m;
+    lm.canChallenge=false;
+  }
+  save(g);
+}
+
+/* ---------- actions ---------- */
+function pushLog(g,s){g.log=(g.log||[]).concat([s]).slice(-12);}
+function finishGame(g,byOut){
+  var adj={};
+  if(byOut>=0){
+    var other=1-byOut,val=rackValue(g.players[other].rack);
+    adj[byOut]=val;adj[other]=-val;
+  }else{
+    g.players.forEach(function(p,i){adj[i]=-rackValue(p.rack);});
+  }
+  g.players.forEach(function(p,i){p.score+=adj[i];});
+  g.status="over";
+  return adj;
+}
+function doPlay(){
+  if(!isMyTurn())return;
+  var r=computeMove(game.board,pend);
+  if(!r.ok){toast(r.msg);return;}
+  var g=clone(game),me=myIdx(),p=g.players[me];
+  var b=g.board.split(""),used={},tiles="";
+  pend.forEach(function(x){b[x.i]=x.ch;used[x.ri]=1;tiles+=localRack[x.ri];});
+  var rem=localRack.filter(function(_,ri){return !used[ri];});
+  var need=Math.min(pend.length,g.bag.length);
+  var drawn=g.bag.slice(0,need);
+  g.bag=g.bag.slice(need);
+  p.rack=rem.join("")+drawn;
+  p.score+=r.total;
+  g.board=b.join("");
+  g.scoreless=0;
+  var words=r.words.map(function(w){return w.text;});
+  var lm={type:"play",by:me,cells:pend.map(function(x){return x.i;}),tiles:tiles,drawn:drawn,score:r.total,words:words,canChallenge:true,adj:null};
+  pushLog(g,p.name+" played "+words.join(", ")+" for "+r.total+(r.bingo?" (bingo!)":"")+".");
+  g.turn=1-me;
+  if(p.rack.length===0){lm.adj=finishGame(g,me);pushLog(g,p.name+" used every tile.");}
+  g.lastMove=lm;
+  pend=[];sel=null;
+  save(g);
+}
+function confirmPass(){
+  openModal('<h2>Pass your turn?</h2><p>You score nothing this turn.</p><button class="btn primary" id="yes">Pass</button><button class="btn" id="no">Cancel</button>');
+  $("#no").onclick=closeModal;
+  $("#yes").onclick=function(){closeModal();doPass();};
+}
+function doPass(){
+  if(!isMyTurn())return;
+  var g=clone(game),me=myIdx();
+  g.scoreless=(g.scoreless||0)+1;
+  pushLog(g,g.players[me].name+" passed.");
+  g.turn=1-me;g.lastMove={type:"pass",by:me,canChallenge:false};
+  if(g.scoreless>=6){finishGame(g,-1);pushLog(g,"Six scoreless turns in a row. Game over.");}
+  pend=[];sel=null;
+  save(g);
+}
+function doSwap(){
+  if(!isMyTurn())return;
+  var idx=Object.keys(exSel).map(Number);
+  if(!idx.length)return;
+  var g=clone(game),me=myIdx(),p=g.players[me];
+  if(g.bag.length<7){toast("Fewer than 7 tiles are left in the bag, so you can't swap.");return;}
+  var out=idx.map(function(i){return localRack[i];});
+  var keep=localRack.filter(function(_,i){return !exSel[i];});
+  var bag=g.bag.split("");
+  var take=bag.splice(0,out.length);
+  p.rack=keep.join("")+take.join("");
+  g.bag=shuffle(bag.concat(out)).join("");
+  g.scoreless=(g.scoreless||0)+1;
+  pushLog(g,p.name+" swapped "+out.length+" tile"+(out.length===1?"":"s")+".");
+  g.turn=1-me;g.lastMove={type:"swap",by:me,canChallenge:false};
+  if(g.scoreless>=6){finishGame(g,-1);pushLog(g,"Six scoreless turns in a row. Game over.");}
+  exMode=false;exSel={};
+  save(g);
+}
+
+/* ---------- placing tiles: tap or drag ---------- */
+function placeTile(i,ri,ch){
+  pend.push({i:i,ch:ch,ri:ri});sel=null;refreshPlay();
+}
+function placeAt(i,ri){
+  var ch=localRack[ri];
+  if(ch==="?"){
+    var h='<h2>Blank tile</h2><p>Which letter should it stand for?</p><div class="letters">';
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(function(L){h+='<button class="t tile" data-L="'+L+'"><span class="l">'+L+'</span></button>';});
+    h+='</div><button class="btn" id="bx">Cancel</button>';
+    openModal(h);
+    $("#bx").onclick=closeModal;
+    $("#modalHost").querySelector(".letters").onclick=function(ev){
+      var b=ev.target.closest("[data-L]");if(!b)return;
+      closeModal();placeTile(i,ri,b.dataset.L.toLowerCase());
+    };
+    return;
+  }
+  placeTile(i,ri,ch);
+}
+function cellFree(i){return game.board[i]==="."&&!pend.some(function(p){return p.i===i;});}
+function moveRack(from,to){
+  if(from===to)return;
+  var ids=localRack.map(function(_,i){return i;});
+  ids.splice(from,1);ids.splice(to,0,from);
+  var map={};ids.forEach(function(old,k){map[old]=k;});
+  localRack=ids.map(function(old){return localRack[old];});
+  pend.forEach(function(p){p.ri=map[p.ri];});
+  if(sel!==null)sel=map[sel];
+}
+
+$("#board").addEventListener("click",function(e){
+  if(swallow)return;
+  var c=e.target.closest(".c");if(!c||!game||!isMyTurn()||exMode)return;
+  var i=+c.dataset.i;
+  var k=pend.findIndex(function(p){return p.i===i;});
+  if(k>=0){pend.splice(k,1);refreshPlay();return;}
+  if(game.board[i]!==".")return;
+  if(sel===null){toast("Tap a tile in your rack, or drag one onto the board.");return;}
+  placeAt(i,sel);
+});
+$("#rack").addEventListener("click",function(e){
+  if(swallow)return;
+  var t=e.target.closest(".t");if(!t||!game)return;
+  var ri=+t.dataset.r;
+  if(pend.some(function(p){return p.ri===ri;}))return;
+  if(exMode){if(exSel[ri])delete exSel[ri];else exSel[ri]=1;renderRack();renderActions();return;}
+  if(!isMyTurn()){toast("Not your turn yet.");return;}
+  sel=sel===ri?null:ri;renderRack();
+});
+$("#actions").addEventListener("click",function(e){
+  var b=e.target.closest("[data-seat]");if(!b||!game)return;
+  var g=clone(game);g.players[+b.dataset.seat].id=myId;save(g);
+});
+
+/* drag and drop (touch and mouse) */
+function dragStart(){
+  var d=drag,size=Math.max(46,parseInt(getComputedStyle(document.documentElement).getPropertyValue("--cell"),10)*1.3);
+  var g=document.createElement("div");
+  g.className="tile ghost";g.style.width=g.style.height=size+"px";g.style.fontSize=(size*.56)+"px";
+  var ch=d.src.kind==="rack"?localRack[d.src.ri]:pend.filter(function(p){return p.i===d.src.i;})[0].ch;
+  g.innerHTML=d.src.kind==="rack"?rackTileHtml(ch):tileHtml(ch);
+  document.body.appendChild(g);
+  d.ghost=g;d.size=size;d.active=true;
+  d.el.classList.add("lift");
+  sel=null;
+}
+function dragPoint(e){return {x:e.clientX,y:e.clientY-42};}
+function dragMove(e){
+  var d=drag,pt=dragPoint(e);
+  d.ghost.style.left=(pt.x-d.size/2)+"px";d.ghost.style.top=(pt.y-d.size/2)+"px";
+  var prev=document.querySelector(".c.drop");if(prev)prev.classList.remove("drop");
+  var el=document.elementFromPoint(pt.x,pt.y),c=el&&el.closest?el.closest(".c"):null;
+  if(c&&cellFree(+c.dataset.i))c.classList.add("drop");
+}
+function dragEnd(e,cancelled){
+  var d=drag;drag=null;
+  if(!d)return;
+  var wasActive=d.active;
+  if(d.ghost)d.ghost.remove();
+  var prev=document.querySelector(".c.drop");if(prev)prev.classList.remove("drop");
+  if(wasActive){
+    swallow=true;setTimeout(function(){swallow=false;},120);
+    if(!cancelled&&game){
+      var pt=dragPoint(e),el=document.elementFromPoint(pt.x,pt.y);
+      var c=el&&el.closest?el.closest(".c"):null, inRack=el&&el.closest?el.closest("#rack"):null;
+      if(c&&cellFree(+c.dataset.i)){
+        var i=+c.dataset.i;
+        if(d.src.kind==="rack")placeAt(i,d.src.ri);
+        else{var p=pend.filter(function(x){return x.i===d.src.i;})[0];if(p)p.i=i;}
+      }else if(inRack){
+        if(d.src.kind==="board"){pend=pend.filter(function(x){return x.i!==d.src.i;});}
+        else{
+          var tiles=[].slice.call(inRack.querySelectorAll(".t")),best=-1,bd=1e9;
+          tiles.forEach(function(t,k){var r=t.getBoundingClientRect(),dx=Math.abs(pt.x-(r.left+r.width/2));if(dx<bd){bd=dx;best=k;}});
+          if(best>=0)moveRack(d.src.ri,best);
+        }
+      }
+    }
+    deferred=false;
+    if(game)renderGame();
+  }else if(deferred){deferred=false;render();}
+}
+document.addEventListener("pointerdown",function(e){
+  if(e.button>0||!game||game.status!=="playing"||exMode||!isMyTurn())return;
+  var t=e.target.closest?e.target.closest("#rack .t, #board .c.pend"):null;
+  if(!t||t.classList.contains("gone"))return;
+  var src=t.classList.contains("pend")?{kind:"board",i:+t.dataset.i}:{kind:"rack",ri:+t.dataset.r};
+  drag={src:src,x:e.clientX,y:e.clientY,active:false,id:e.pointerId,el:t,ghost:null};
+});
+document.addEventListener("pointermove",function(e){
+  if(!drag||e.pointerId!==drag.id)return;
+  if(!drag.active){
+    if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<8)return;
+    dragStart();
+  }
+  e.preventDefault();
+  dragMove(e);
+},{passive:false});
+document.addEventListener("pointerup",function(e){if(drag&&e.pointerId===drag.id)dragEnd(e,false);});
+document.addEventListener("pointercancel",function(e){if(drag&&e.pointerId===drag.id)dragEnd(e,true);});
+
+/* ---------- menu ---------- */
+$("#menuBtn").onclick=function(){
+  if(!room)return;
+  openModal('<h2>Game menu</h2><p>Game code <b>'+esc(room.toUpperCase())+'</b>. If you doubt a word your partner played, tap Challenge before you play your own turn.</p>'+
+    '<button class="btn" id="mCopy">Copy invite link</button>'+
+    '<button class="btn danger" id="mEnd">End this game for both players</button>'+
+    '<button class="btn" id="mLeave">Leave on this phone only</button><button class="btn" id="mX">Close</button>');
+  $("#mX").onclick=closeModal;
+  $("#mCopy").onclick=function(){(navigator.clipboard?navigator.clipboard.writeText(shareLink()):Promise.reject()).then(function(){toast("Link copied.");}).catch(function(){toast(shareLink());});};
+  $("#mEnd").onclick=function(){closeModal();pend=[];sel=null;localRack=[];save({status:"none",players:[],log:[]});};
+  $("#mLeave").onclick=function(){closeModal();leaveRoom();};
+};
+document.addEventListener("click",function(e){if(e.target.id==="modalBg")closeModal();});
+window.addEventListener("resize",function(){if(game&&game.status==="playing")fitBoard();});
+
+/* ---------- start up ---------- */
+(function(){
+  var h=normCode((location.hash||"").replace("#",""));
+  var saved=lsGet("kts_room");
+  if(h.length===8&&h!==saved){
+    prefillCode=h;
+    if(saved){lsDel("kts_room");}
+    // Skip to the name prompt; joining happens when the name is entered.
+    render();
+    return;
+  }
+  if(saved){enterRoom(saved);}
+  render();
+})();
+})();
+</script>
+</body>
+</html>
