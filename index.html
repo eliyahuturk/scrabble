@@ -502,14 +502,8 @@ function resolveChallenge(upheld){
   var mover=g.players[m],chal=g.players[me];
   g.log=g.log||[];
   if(upheld){
-    lm.cells.forEach(function(i){g.board=g.board.substring(0,i)+"."+g.board.substring(i+1);});
-    mover.score-=lm.score;
-    if(lm.adj){g.players.forEach(function(p,i){p.score-=(lm.adj[i]||0);});}
-    var rack=mover.rack.split("");
-    lm.drawn.split("").forEach(function(ch){var k=rack.indexOf(ch);if(k>=0)rack.splice(k,1);});
-    mover.rack=rack.join("")+lm.tiles;
-    g.bag=shuffle((g.bag+lm.drawn).split("")).join("");
-    g.status="playing";g.turn=me;
+    undoPlay(g);
+    g.turn=me;
     pushLog(g,chal.name+" challenged and won. "+mover.name+" takes back "+lm.words.join(", ")+".");
     g.lastMove={type:"challenge",by:me,canChallenge:false};
   }else{
@@ -517,6 +511,41 @@ function resolveChallenge(upheld){
     if(g.status==="playing")g.turn=m;
     lm.canChallenge=false;
   }
+  save(g);
+}
+
+/* Removes the last play from the board, returns the tiles and points, and reopens the game if it had ended. */
+function undoPlay(g){
+  var lm=g.lastMove,mover=g.players[lm.by];
+  lm.cells.forEach(function(i){g.board=g.board.substring(0,i)+"."+g.board.substring(i+1);});
+  mover.score-=lm.score;
+  if(lm.adj){g.players.forEach(function(p,i){p.score-=(lm.adj[i]||0);});}
+  var rack=mover.rack.split("");
+  lm.drawn.split("").forEach(function(ch){var k=rack.indexOf(ch);if(k>=0)rack.splice(k,1);});
+  mover.rack=rack.join("")+lm.tiles;
+  g.bag=shuffle((g.bag+lm.drawn).split("")).join("");
+  g.status="playing";
+}
+function canTakeBack(){
+  var lm=game.lastMove,me=myIdx();
+  return !!lm&&lm.type==="play"&&lm.canChallenge&&lm.by===me&&me>=0&&game.turn!==me;
+}
+function takeBack(){
+  if(!canTakeBack())return;
+  var g=clone(game),me=myIdx(),lm=g.lastMove;
+  undoPlay(g);
+  g.turn=me;
+  pushLog(g,g.players[me].name+" took back "+lm.words.join(", ")+".");
+  g.lastMove={type:"takeback",by:me,canChallenge:false};
+  pend=[];sel=null;
+  save(g);
+}
+function switchTurn(){
+  var g=clone(game);
+  g.turn=1-g.turn;
+  pushLog(g,"Turn switched to "+g.players[g.turn].name+" (fixed by "+g.players[myIdx()].name+").");
+  g.lastMove={type:"fix",by:myIdx(),canChallenge:false};
+  pend=[];sel=null;
   save(g);
 }
 
@@ -719,10 +748,15 @@ document.addEventListener("pointercancel",function(e){if(drag&&e.pointerId===dra
 $("#menuBtn").onclick=function(){
   if(!room)return;
   openModal('<h2>Game menu</h2><p>Game code <b>'+esc(room.toUpperCase())+'</b>. If you doubt a word your partner played, tap Challenge before you play your own turn.</p>'+
+    (game&&game.status==="playing"&&myIdx()>=0?
+      (canTakeBack()?'<button class="btn" id="mBack">Take back my last word</button>':'')+
+      '<button class="btn" id="mTurn">Switch turn to '+esc(game.players[1-game.turn].name)+'</button>':'')+
     '<button class="btn" id="mCopy">Copy invite link</button>'+
     '<button class="btn danger" id="mEnd">End this game for both players</button>'+
     '<button class="btn" id="mLeave">Leave on this phone only</button><button class="btn" id="mX">Close</button>');
   $("#mX").onclick=closeModal;
+  if($("#mBack"))$("#mBack").onclick=function(){closeModal();takeBack();};
+  if($("#mTurn"))$("#mTurn").onclick=function(){closeModal();switchTurn();};
   $("#mCopy").onclick=function(){(navigator.clipboard?navigator.clipboard.writeText(shareLink()):Promise.reject()).then(function(){toast("Link copied.");}).catch(function(){toast(shareLink());});};
   $("#mEnd").onclick=function(){closeModal();pend=[];sel=null;localRack=[];save({status:"none",players:[],log:[]});};
   $("#mLeave").onclick=function(){closeModal();leaveRoom();};
