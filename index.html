@@ -670,13 +670,13 @@ function placeAt(i,ri){
   var ch=localRack[ri];
   if(ch==="?"){
     var h='<h2>Blank tile</h2><p>Which letter should it stand for?</p><div class="letters">';
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(function(L){h+='<button class="t tile" data-L="'+L+'"><span class="l">'+L+'</span></button>';});
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").forEach(function(L){h+='<button class="t tile" data-letter="'+L+'"><span class="l">'+L+'</span></button>';});
     h+='</div><button class="btn" id="bx">Cancel</button>';
     openModal(h);
     $("#bx").onclick=closeModal;
     $("#modalHost").querySelector(".letters").onclick=function(ev){
-      var b=ev.target.closest("[data-L]");if(!b)return;
-      closeModal();placeTile(i,ri,b.dataset.L.toLowerCase());
+      var b=ev.target.closest("[data-letter]");if(!b)return;
+      closeModal();placeTile(i,ri,b.dataset.letter.toLowerCase());
     };
     return;
   }
