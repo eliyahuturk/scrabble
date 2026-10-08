@@ -40,6 +40,7 @@ h1{font:700 26px/1 var(--f-disp);margin:0;letter-spacing:.01em}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
 .card h2{font:700 20px/1.2 var(--f-disp);margin:0}
 .card p{margin:0;color:var(--muted)}
+.glist{display:flex;flex-direction:column;gap:6px}.glist .btn{text-align:left}
 .card .sep{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
 .codebig{font:700 28px/1 var(--f-disp);letter-spacing:.2em}
 input[type=text]{font:inherit;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}
@@ -250,8 +251,14 @@ document.addEventListener("visibilitychange",function(){
 /* ---------- rooms ---------- */
 function genCode(){var a="abcdefghjkmnpqrstuvwxyz23456789",s="";for(var i=0;i<8;i++)s+=a[Math.floor(Math.random()*a.length)];return s;}
 function normCode(v){return String(v||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function myRooms(){try{var a=JSON.parse(lsGet("kts_rooms")||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
+function rememberRoom(code){var a=myRooms().filter(function(c){return c!==code;});a.unshift(code);lsSet("kts_rooms",JSON.stringify(a.slice(0,12)));}
+function forgetRoom(code){lsSet("kts_rooms",JSON.stringify(myRooms().filter(function(c){return c!==code;})));}
+function setHash(code){try{history.replaceState(null,"",location.pathname+location.search+(code?"#"+code:""));}catch(e){}}
 function enterRoom(code){
-  room=code;lsSet("kts_room",code);
+  closeStream();
+  room=code;lsSet("kts_room",code);rememberRoom(code);setHash(code);
+  pend=[];sel=null;localRack=[];exMode=false;exSel={};
   lastId=null;remoteVer=0;
   var raw=lsGet("kts_game_"+code);
   try{game=raw?JSON.parse(raw):null;}catch(e){game=null;}
@@ -259,11 +266,28 @@ function enterRoom(code){
 }
 function leaveRoom(){
   closeStream();
-  if(room)lsDel("kts_game_"+room);
+  if(room){lsDel("kts_game_"+room);forgetRoom(room);if(lsGet("kts_room")===room)lsDel("kts_room");}
   room=null;game=null;pendingJoin=null;pend=[];sel=null;localRack=[];exMode=false;exSel={};
-  lsDel("kts_room");
-  try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
+  setHash("");
   setSync("wait");render();
+}
+// Go to the start screen without leaving this game; it stays in "Your games".
+function showGames(){
+  closeStream();
+  room=null;game=null;pendingJoin=null;pend=[];sel=null;localRack=[];exMode=false;exSel={};
+  setHash("");setSync("wait");render();
+}
+function gamesListHtml(){
+  var a=myRooms();if(!a.length)return "";
+  var h='<h2>Your games</h2><div class="glist">';
+  a.forEach(function(c){
+    var g=null;try{g=JSON.parse(lsGet("kts_game_"+c)||"null");}catch(e){}
+    var others=g&&g.players?g.players.filter(function(p){return p.id!==myId;}).map(function(p){return p.name;}):[];
+    var label=others.length?"vs "+others.join(", "):(g&&g.status==="lobby"?"Waiting for a partner":"Game");
+    var st=g?(g.status==="over"?" · finished":g.status==="playing"?(g.players[g.turn]&&g.players[g.turn].id===myId?" · your turn":" · their turn"):""):"";
+    h+='<button class="btn" data-room="'+esc(c)+'">'+esc(label+st)+' <span style="font-weight:500;color:var(--muted)">('+esc(c.toUpperCase())+')</span></button>';
+  });
+  return h+'</div><hr class="sep">';
 }
 function shareLink(){return location.href.split("#")[0]+"#"+room;}
 
@@ -355,10 +379,13 @@ function readName(){var v=($("#nameIn").value||"").trim().slice(0,16);if(!v){toa
 
 function renderLanding(){
   var lobby=$("#lobby");lobby.hidden=false;
-  lobby.innerHTML='<h2>Play Scrabble</h2><p>Standard rules: 15×15 board, 100 tiles, 7-tile racks, 50-point bonus for using all seven. No ads, no accounts.</p>'+nameField()+
+  lobby.innerHTML=gamesListHtml()+'<h2>Play Scrabble</h2><p>Standard rules: 15×15 board, 100 tiles, 7-tile racks, 50-point bonus for using all seven. No ads, no accounts.</p>'+nameField()+
     '<button class="btn primary" id="startBtn">Start a new game</button><hr class="sep"><p>Got an invite? Open the link you were sent, or type the game code.</p>'+
     '<input type="text" id="codeIn" maxlength="12" placeholder="Game code" autocapitalize="characters" autocomplete="off" value="'+esc(prefillCode.toUpperCase())+'"><button class="btn" id="joinCodeBtn">Join with code</button>';
   $("#startBtn").onclick=function(){var n=readName();if(!n)return;startNew(n);};
+  Array.prototype.forEach.call(lobby.querySelectorAll("[data-room]"),function(b){
+    b.onclick=function(){enterRoom(b.getAttribute("data-room"));render();};
+  });
   $("#joinCodeBtn").onclick=function(){
     var n=readName();if(!n)return;
     var c=normCode($("#codeIn").value);
@@ -803,6 +830,7 @@ $("#menuBtn").onclick=function(){
       '<button class="btn" id="mTurn">Switch turn to '+esc(game.players[1-game.turn].name)+'</button>':'')+
     (game&&myIdx()>=0&&(game.status==="playing"||game.status==="over")?'<button class="btn" id="mAlert">Phone alerts when it\'s your turn</button>':'')+
     '<button class="btn" id="mCopy">Copy invite link</button>'+
+    '<button class="btn" id="mGames">Start or switch games</button>'+
     '<button class="btn danger" id="mEnd">End this game for both players</button>'+
     '<button class="btn" id="mLeave">Leave on this phone only</button><button class="btn" id="mX">Close</button>');
   $("#mX").onclick=closeModal;
@@ -812,21 +840,19 @@ $("#menuBtn").onclick=function(){
   $("#mCopy").onclick=function(){(navigator.clipboard?navigator.clipboard.writeText(shareLink()):Promise.reject()).then(function(){toast("Link copied.");}).catch(function(){toast(shareLink());});};
   $("#mEnd").onclick=function(){closeModal();pend=[];sel=null;localRack=[];save({status:"none",players:[],log:[]});};
   $("#mLeave").onclick=function(){closeModal();leaveRoom();};
+  $("#mGames").onclick=function(){closeModal();showGames();};
 };
 document.addEventListener("click",function(e){if(e.target.id==="modalBg")closeModal();});
 window.addEventListener("resize",function(){if(game&&game.status==="playing")fitBoard();});
 
 /* ---------- start up ---------- */
 (function(){
+  // The game code in the link decides which game this tab shows, so each tab,
+  // bookmark or home-screen shortcut keeps its own game.
   var h=normCode((location.hash||"").replace("#",""));
   var saved=lsGet("kts_room");
-  if(h.length===8&&h!==saved){
-    prefillCode=h;
-    if(saved){lsDel("kts_room");}
-    // Skip to the name prompt; joining happens when the name is entered.
-    render();
-    return;
-  }
+  if(saved&&myRooms().indexOf(saved)<0){var a=myRooms();a.push(saved);lsSet("kts_rooms",JSON.stringify(a));}
+  if(h.length>=6){enterRoom(h);render();return;}
   if(saved){enterRoom(saved);}
   render();
 })();
