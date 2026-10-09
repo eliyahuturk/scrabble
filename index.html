@@ -346,6 +346,8 @@ function computeMove(boardStr,pd){
 /* ---------- rendering ---------- */
 function myIdx(){return game&&game.players?game.players.findIndex(function(p){return p.id===myId;}):-1;}
 function isMyTurn(){return game&&game.status==="playing"&&myIdx()>=0&&game.turn===myIdx();}
+// Arranging tiles on the board is allowed any time during play; only Play, Swap and Pass need your turn.
+function canArrange(){return game&&game.status==="playing"&&myIdx()>=0;}
 function tileHtml(ch){
   var blank=ch!==ch.toUpperCase();
   return '<span class="l">'+esc(ch.toUpperCase())+'</span>'+(blank?'':'<span class="v">'+VAL[ch]+'</span>');
@@ -453,14 +455,15 @@ function renderGame(){
     st=a.score===b.score?"Game over. It's a tie at "+a.score+".":"Game over. "+(a.score>b.score?a.name:b.name)+" wins "+Math.max(a.score,b.score)+" to "+Math.min(a.score,b.score)+".";
   }else if(me<0){st="Watching. It is "+game.players[game.turn].name+"'s turn.";}
   else if(myTurn){st=exMode?"Choose tiles to swap.":"Your turn.";}
-  else st="Waiting for "+game.players[game.turn].name+"…";
+  else st="Waiting for "+game.players[game.turn].name+"… <span style=\"font-weight:500;color:var(--muted)\">You can try out words meanwhile.</span>";
   st+=' <span style="font-weight:500;color:var(--muted)">· '+game.bag.length+' in bag</span>';
   $("#status").innerHTML=st;
   renderChallengeBar();
   if(me>=0){
     var gr=game.players[me].rack;
     if(sorted(gr)!==sorted(localRack.join(""))){localRack=gr.split("");pend=[];sel=null;exMode=false;exSel={};}
-    if(!myTurn&&pend.length){pend=[];sel=null;}
+    // If the other player just covered a square you were trying out, that tile goes back to your rack.
+    if(pend.length)pend=pend.filter(function(p){return game.board[p.i]===".";});
   }else{localRack=[];pend=[];}
   renderBoard();renderRack();renderPreview();renderActions();renderLog();
 }
@@ -722,7 +725,7 @@ function moveRack(from,to){
 
 $("#board").addEventListener("click",function(e){
   if(swallow)return;
-  var c=e.target.closest(".c");if(!c||!game||!isMyTurn()||exMode)return;
+  var c=e.target.closest(".c");if(!c||!game||!canArrange()||exMode)return;
   var i=+c.dataset.i;
   var k=pend.findIndex(function(p){return p.i===i;});
   if(k>=0){pend.splice(k,1);refreshPlay();return;}
@@ -736,7 +739,7 @@ $("#rack").addEventListener("click",function(e){
   var ri=+t.dataset.r;
   if(pend.some(function(p){return p.ri===ri;}))return;
   if(exMode){if(exSel[ri])delete exSel[ri];else exSel[ri]=1;renderRack();renderActions();return;}
-  if(!isMyTurn()){toast("Not your turn yet.");return;}
+  if(!canArrange())return;
   sel=sel===ri?null:ri;renderRack();
 });
 $("#actions").addEventListener("click",function(e){
@@ -762,7 +765,7 @@ function dragMove(e){
   d.ghost.style.left=(pt.x-d.size/2)+"px";d.ghost.style.top=(pt.y-d.size/2)+"px";
   var prev=document.querySelector(".c.drop");if(prev)prev.classList.remove("drop");
   var el=document.elementFromPoint(pt.x,pt.y),c=el&&el.closest?el.closest(".c"):null;
-  if(c&&isMyTurn()&&cellFree(+c.dataset.i))c.classList.add("drop");
+  if(c&&canArrange()&&cellFree(+c.dataset.i))c.classList.add("drop");
 }
 function dragEnd(e,cancelled){
   var d=drag;drag=null;
@@ -775,7 +778,7 @@ function dragEnd(e,cancelled){
     if(!cancelled&&game){
       var pt=dragPoint(e),el=document.elementFromPoint(pt.x,pt.y);
       var c=el&&el.closest?el.closest(".c"):null, inRack=el&&el.closest?el.closest("#rack"):null;
-      if(c&&isMyTurn()&&cellFree(+c.dataset.i)){
+      if(c&&canArrange()&&cellFree(+c.dataset.i)){
         var i=+c.dataset.i;
         if(d.src.kind==="rack")placeAt(i,d.src.ri);
         else{var p=pend.filter(function(x){return x.i===d.src.i;})[0];if(p)p.i=i;}
